@@ -397,7 +397,18 @@ typedef HANDLE THREAD_HANDLE;
 #endif
 
 typedef TaskHandle_t THREAD_HANDLE;
-#if configSUPPORT_STATIC_ALLOCATION == 1
+#if defined(ESP_PLATFORM) && defined(OPTION_FREERTOS_CORE)
+// krumpir patch: on ESP-IDF, pin the XCP server tasks to core OPTION_FREERTOS_CORE, so they never run on
+// the core of the control loop
+#define create_thread(h, _attr, fn, args)                                                                                                                                          \
+    do {                                                                                                                                                                           \
+        static StaticTask_t task_buffer;                                                                                                                                           \
+        static StackType_t stack_buffer[FREERTOS_TASK_STACK_DEPTH(OPTION_FREERTOS_STACK_BYTES)];                                                                                  \
+        *(h) = xTaskCreateStaticPinnedToCore((TaskFunction_t)(fn), #fn, FREERTOS_TASK_STACK_DEPTH(OPTION_FREERTOS_STACK_BYTES), (args), OPTION_FREERTOS_PRIORITY, stack_buffer,   \
+                                             &task_buffer, OPTION_FREERTOS_CORE);                                                                                                  \
+        assert(*(h) != NULL);                                                                                                                                                      \
+    } while (0)
+#elif configSUPPORT_STATIC_ALLOCATION == 1
 // Each call site owns a persistent task control block and stack.
 #define create_thread(h, _attr, fn, args)                                                                                                                                          \
     do {                                                                                                                                                                           \
